@@ -1,0 +1,7 @@
+{
+  "include": ["src", "tests", "run_harness.py"],
+  "exclude": [".venv", "build", "dist"],
+  "extraPaths": ["src"],
+  "pythonVersion": "3.11",
+  "typeCheckingMode": "basic"
+}
