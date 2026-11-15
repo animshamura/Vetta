@@ -1,15 +1,19 @@
 import hmac
 import logging
+import time
 from collections.abc import Callable
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from typing import Annotated
 from uuid import uuid4
 
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, status
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, SecretStr
 
+from hernness import __version__
 from hernness.config import Settings
 from hernness.jobs import JobRecord, JobStore
 from hernness.orchestrator import run_harness
@@ -27,6 +31,24 @@ class RunRequest(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str
+    service: str
+    version: str
+    environment: str
+    uptime_seconds: float
+    database_status: str
+
+
+class ReadinessResponse(BaseModel):
+    status: str
+    checks: dict[str, bool | str]
+
+
+class MetricsResponse(BaseModel):
+    status: str
+    version: str
+    uptime_seconds: float
+    total_jobs: int
+    jobs_by_status: dict[str, int]
 
 
 def create_app(
@@ -34,29 +56,54 @@ def create_app(
     runner: RunFunction = run_harness,
 ) -> FastAPI:
     resolved_settings = settings or Settings()
+    resolved_settings.ensure_database_directory()
     store = JobStore(resolved_settings.database_path)
+    started_at = datetime.now(UTC)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
+        resolved_settings.ensure_database_directory()
         resolved_settings.validate_credentials()
         store.initialize()
         yield
 
     app = FastAPI(
         title="Hernness Verification API",
-        version="1.0.0",
-        description="Submit code-generation tasks and retrieve their verification results.",
+        version=__version__,
+        description=(
+            "Production-ready task submission and verification API with operational "
+            "health, readiness, and performance telemetry."
+        ),
         lifespan=lifespan,
     )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=resolved_settings.cors_origins,
         allow_credentials=False,
-        allow_methods=["GET", "POST"],
-        allow_headers=["Authorization", "Content-Type"],
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
     )
     app.state.settings = resolved_settings
     app.state.job_store = store
+    app.state.started_at = started_at
+
+    @app.middleware("http")
+    async def request_context_middleware(request: Request, call_next):
+        request_id = request.headers.get("X-Request-ID", str(uuid4()))
+        request.state.request_id = request_id
+        started = time.perf_counter()
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        response.headers["X-Process-Time-ms"] = str(round((time.perf_counter() - started) * 1000, 2))
+        return response
+
+    @app.exception_handler(Exception)
+    async def unhandled_exception(_: Request, exc: Exception):
+        logger.exception("Unhandled API error: %s", exc)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"detail": "An unexpected internal error occurred."},
+        )
 
     def authenticate(
         credentials: Annotated[
@@ -96,7 +143,44 @@ def create_app(
 
     @app.get("/health", response_model=HealthResponse, tags=["operations"])
     def health() -> HealthResponse:
-        return HealthResponse(status="ok")
+        database_status = store.ping()["database"]
+        uptime_seconds = (datetime.now(UTC) - started_at).total_seconds()
+        return HealthResponse(
+            status="ok",
+            service=resolved_settings.app_name,
+            version=__version__,
+            environment=resolved_settings.environment,
+            uptime_seconds=uptime_seconds,
+            database_status=database_status,
+        )
+
+    @app.get("/ready", response_model=ReadinessResponse, tags=["operations"])
+    def readiness() -> ReadinessResponse:
+        ping = store.ping()
+        checks = {
+            "database": ping["healthy"],
+            "api_token_configured": resolved_settings.api_token is not None,
+            "openai_credentials_configured": resolved_settings.openai_api_key is not None,
+        }
+        return ReadinessResponse(
+            status="ready" if all(value is True for value in checks.values()) else "degraded",
+            checks=checks,
+        )
+
+    @app.get("/metrics", response_model=MetricsResponse, tags=["operations"])
+    def metrics() -> MetricsResponse:
+        summary = store.summary()
+        uptime_seconds = (datetime.now(UTC) - started_at).total_seconds()
+        return MetricsResponse(
+            status="ok",
+            version=__version__,
+            uptime_seconds=uptime_seconds,
+            total_jobs=summary["total"],
+            jobs_by_status={
+                key: summary.get(key, 0)
+                for key in ("queued", "running", "completed", "failed")
+            },
+        )
 
     @app.post(
         "/v1/runs",

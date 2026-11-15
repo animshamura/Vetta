@@ -39,6 +39,27 @@ class JobStore:
                 """
             )
 
+    def ping(self) -> dict[str, str | bool]:
+        with sqlite3.connect(self.database_path, timeout=10) as connection:
+            quick_check = connection.execute("PRAGMA quick_check").fetchone()
+        healthy = quick_check is not None and quick_check[0] == "ok"
+        return {
+            "database": "ok" if healthy else "degraded",
+            "healthy": healthy,
+            "details": quick_check[0] if quick_check else "Database check unavailable",
+        }
+
+    def summary(self) -> dict[str, int]:
+        with sqlite3.connect(self.database_path, timeout=10) as connection:
+            rows = connection.execute(
+                "SELECT status, COUNT(*) FROM jobs GROUP BY status"
+            ).fetchall()
+        summary = {"queued": 0, "running": 0, "completed": 0, "failed": 0, "total": 0}
+        for status, count in rows:
+            summary[status] = count
+            summary["total"] += count
+        return summary
+
     def create(self, job_id: str) -> JobRecord:
         now = datetime.now(UTC)
         with sqlite3.connect(self.database_path, timeout=10) as connection:

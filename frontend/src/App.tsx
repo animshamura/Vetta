@@ -202,6 +202,24 @@ function App() {
         <p>Run a maker-checker cycle and inspect every step of the verification pipeline.</p>
       </section>
 
+      <section className="overview-grid" aria-label="Verification overview">
+        <div className="overview-card">
+          <span className="overview-label">PIPELINE</span>
+          <strong>Maker → Sandbox → Reviewer</strong>
+          <small>Deterministic checks before execution.</small>
+        </div>
+        <div className="overview-card emphasis">
+          <span className="overview-label">THREAT MODEL</span>
+          <strong>Security-first validation</strong>
+          <small>AST + import guard + sandbox execution.</small>
+        </div>
+        <div className="overview-card">
+          <span className="overview-label">OPERATIONS</span>
+          <strong>Production telemetry</strong>
+          <small>Health, readiness, and queue metrics.</small>
+        </div>
+      </section>
+
       <section className="connection-panel" aria-label="API connection settings">
         <div className="connection-copy">
           <span className="section-index">01</span>
@@ -312,6 +330,23 @@ function App() {
             </div>
           )}
 
+          {job && result && (
+            <div className="status-rail" aria-label="Run diagnostics">
+              <div className="status-pill">
+                <span className="status-swatch" />
+                <strong>{result.status}</strong>
+              </div>
+              <div className="status-pill muted">
+                <span className="status-swatch neutral" />
+                <strong>{result.last_sensor_report?.test_passed ? 'Sandbox pass' : 'Sandbox review'}</strong>
+              </div>
+              <div className="status-pill muted">
+                <span className="status-swatch neutral" />
+                <strong>{result.last_verdict?.approved ? 'Approved by checker' : 'Awaiting approval'}</strong>
+              </div>
+            </div>
+          )}
+
           {!job ? (
             <div className="empty-state">
               <div className="empty-orbit" aria-hidden="true">
@@ -366,6 +401,24 @@ function App() {
                     <Metric label="ITERATIONS" value={`${result.current_iteration} / ${result.max_iterations}`} />
                     <Metric label="TOKENS" value={result.metrics.total_tokens_used.toLocaleString()} />
                     <Metric label="DURATION" value={`${result.metrics.duration_seconds.toFixed(1)}s`} />
+                  </div>
+
+                  <div className="insight-grid">
+                    <InsightCard
+                      title="AST Security"
+                      value={result.last_sensor_report?.ast_valid ? 'PASS' : 'BLOCKED'}
+                      tone={result.last_sensor_report?.ast_valid ? 'good' : 'warn'}
+                    />
+                    <InsightCard
+                      title="Dangerous Calls"
+                      value={String(result.last_sensor_report?.security_violations.length ?? 0)}
+                      tone={(result.last_sensor_report?.security_violations.length ?? 0) === 0 ? 'good' : 'warn'}
+                    />
+                    <InsightCard
+                      title="Reviewer" 
+                      value={result.last_verdict?.approved ? 'APPROVED' : 'REVIEW'}
+                      tone={result.last_verdict?.approved ? 'good' : 'neutral'}
+                    />
                   </div>
 
                   {result.last_sensor_report && (
@@ -454,6 +507,23 @@ function StatusBadge({ status }: { status: JobStatus }) {
 
 function Metric({ label, value }: { label: string; value: string }) {
   return <div className="metric"><span>{label}</span><strong>{value}</strong></div>
+}
+
+function InsightCard({
+  title,
+  value,
+  tone,
+}: {
+  title: string
+  value: string
+  tone: 'good' | 'warn' | 'neutral'
+}) {
+  return (
+    <div className={`insight-card ${tone}`}>
+      <small>{title}</small>
+      <strong>{value}</strong>
+    </div>
+  )
 }
 
 function Sensor({ label, passed }: { label: string; passed: boolean }) {

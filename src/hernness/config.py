@@ -12,6 +12,9 @@ class Settings(BaseSettings):
         populate_by_name=True,
     )
 
+    app_name: str = Field(default="hernness", validation_alias="HERNESS_APP_NAME")
+    environment: str = Field(default="development", validation_alias="HERNESS_ENVIRONMENT")
+    log_level: str = Field(default="INFO", validation_alias="HERNESS_LOG_LEVEL")
     openai_api_key: SecretStr | None = Field(
         default=None,
         validation_alias="OPENAI_API_KEY",
@@ -38,6 +41,9 @@ class Settings(BaseSettings):
         validation_alias="HERNESS_SANDBOX_TIMEOUT_SECONDS",
     )
     max_iterations: int = Field(default=4, ge=1, le=10, validation_alias="HERNESS_MAX_ITERATIONS")
+
+    def ensure_database_directory(self) -> None:
+        self.database_path.parent.mkdir(parents=True, exist_ok=True)
 
     def validate_openai_credentials(self) -> None:
         if self.openai_api_key is None or not self.openai_api_key.get_secret_value().strip():

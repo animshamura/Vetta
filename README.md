@@ -81,7 +81,11 @@ uvicorn hernness.api:app --host 127.0.0.1 --port 8000
 ```
 
 The API listens on port 8000. Interactive API documentation is available at
-`/docs`; `/health` is unauthenticated. Submit and retrieve runs using a bearer token:
+`/docs`; `/health`, `/ready`, and `/metrics` are unauthenticated operational endpoints.
+`/health` reports service identity and uptime, `/ready` validates critical dependencies,
+and `/metrics` exposes queue counts and runtime telemetry. Requests include an
+`X-Request-ID` header for traceability and standardized processing telemetry.
+Submit and retrieve runs using a bearer token:
 
 ```powershell
 $headers = @{ Authorization = "Bearer $env:HERNESS_API_TOKEN" }
@@ -161,6 +165,16 @@ container filesystem, dropped Linux capabilities, `no-new-privileges`, a non-roo
 container user, memory/CPU/process limits, and a timeout. The container is removed when
 execution finishes. Docker must be configured with the required resource and security
 features; do not expose an unauthenticated Docker daemon.
+
+## Enterprise-grade operational hardening
+
+The service is ready for more production-oriented deployments thanks to:
+
+- structured request metadata and trace IDs (`X-Request-ID` and `X-Process-Time-ms`)
+- explicit operational health endpoints: `/health`, `/ready`, and `/metrics`
+- dependency-aware startup validation for OpenAI credentials, API token, and SQLite readiness
+- safe internal error handling that avoids leaking sensitive implementation details
+- deterministic CORS configuration for approved frontend origins
 
 ## Development
 

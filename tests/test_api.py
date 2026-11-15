@@ -88,7 +88,26 @@ def test_health_endpoint_does_not_require_auth(tmp_path) -> None:
         response = client.get("/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["service"] == "hernness"
+    assert payload["version"] == "1.0.0"
+    assert payload["database_status"] == "ok"
+
+
+def test_readiness_and_metrics_endpoints_report_service_state(tmp_path) -> None:
+    with TestClient(create_app(make_settings(tmp_path))) as client:
+        readiness = client.get("/ready")
+        metrics = client.get("/metrics")
+
+    assert readiness.status_code == 200
+    assert readiness.json()["status"] == "ready"
+    assert metrics.status_code == 200
+    payload = metrics.json()
+    assert payload["status"] == "ok"
+    assert payload["jobs_by_status"]["queued"] == 0
+    assert payload["jobs_by_status"]["failed"] == 0
+    assert payload["version"] == "1.0.0"
 
 
 def test_configured_frontend_origin_can_make_authenticated_requests(tmp_path) -> None:
