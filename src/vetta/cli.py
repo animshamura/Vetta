@@ -2,8 +2,8 @@ import argparse
 import logging
 from pathlib import Path
 
-from hernness.config import Settings
-from hernness.orchestrator import run_harness
+from vetta.config import Settings
+from vetta.orchestrator import run_harness
 
 DEFAULT_TASK_SPEC = """\
 Implement an enterprise-grade ThreadSafeLRUCache in Python:

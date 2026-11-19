@@ -90,6 +90,7 @@ function App() {
   const [job, setJob] = useState<Job | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [copyFeedback, setCopyFeedback] = useState('')
   const activeJobId = job?.id
   const activeJobStatus = job?.status
 
@@ -171,15 +172,40 @@ function App() {
     }
   }
 
+  async function copyText(text: string, label: string) {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopyFeedback(`${label} copied`)
+      window.setTimeout(() => setCopyFeedback(''), 1800)
+    } catch {
+      setError(`Could not copy ${label.toLowerCase()}.`)
+    }
+  }
+
+  function downloadText(filename: string, text: string) {
+    const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }))
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = filename
+    anchor.click()
+    URL.revokeObjectURL(url)
+  }
+
+  function resetConsole() {
+    setJob(null)
+    setError('')
+    setCopyFeedback('')
+  }
+
   const result = job?.result
   const runApproved = result?.status === 'APPROVED'
 
   return (
     <main className="app-shell">
       <header className="topbar">
-        <a className="brand" href="/" aria-label="Hernness home">
-          <span className="brand-mark" aria-hidden="true">H</span>
-          <span>hernness<span className="brand-period">.</span></span>
+        <a className="brand" href="/" aria-label="Vetta home">
+          <span className="brand-mark" aria-hidden="true">V</span>
+          <span>vetta<span className="brand-period">.</span></span>
         </a>
         <div className="topbar-right">
           <span className={`connection-indicator ${connection}`} aria-live="polite">
@@ -247,7 +273,7 @@ function App() {
             <input
               value={token}
               onChange={(event) => setToken(event.target.value)}
-              placeholder="HERNESS_API_TOKEN"
+              placeholder="VETTA_API_TOKEN"
               type="password"
               autoComplete="off"
             />
@@ -320,7 +346,11 @@ function App() {
               <span className="section-index">03 / RUN OUTPUT</span>
               <h2>Verification result</h2>
             </div>
-            {job && <StatusBadge status={job.status} />}
+            <div className="result-actions">
+              {copyFeedback && <span className="copy-feedback" role="status">{copyFeedback}</span>}
+              {job && <button className="button button-secondary compact-button" type="button" onClick={resetConsole}>New run</button>}
+              {job && <StatusBadge status={job.status} />}
+            </div>
           </div>
 
           {error && (
@@ -350,7 +380,7 @@ function App() {
           {!job ? (
             <div className="empty-state">
               <div className="empty-orbit" aria-hidden="true">
-                <span className="orbit-center">H</span>
+                <span className="orbit-center">V</span>
                 <span className="orbit-node node-one" />
                 <span className="orbit-node node-two" />
                 <span className="orbit-node node-three" />
@@ -458,13 +488,27 @@ function App() {
                   <div className="artifact-list">
                     {result.current_code && (
                       <details className="artifact">
-                        <summary><span>Generated Python code</span><span className="artifact-type">.py</span></summary>
+                        <summary>
+                          <span>Generated Python code</span>
+                          <span className="artifact-actions">
+                            <button type="button" onClick={(event) => { event.preventDefault(); void copyText(result.current_code, 'Python code') }}>Copy</button>
+                            <button type="button" onClick={(event) => { event.preventDefault(); downloadText('solution.py', result.current_code) }}>Download</button>
+                            <span className="artifact-type">.py</span>
+                          </span>
+                        </summary>
                         <pre><code>{result.current_code}</code></pre>
                       </details>
                     )}
                     {result.current_tests && (
                       <details className="artifact">
-                        <summary><span>Generated pytest tests</span><span className="artifact-type">TESTS</span></summary>
+                        <summary>
+                          <span>Generated pytest tests</span>
+                          <span className="artifact-actions">
+                            <button type="button" onClick={(event) => { event.preventDefault(); void copyText(result.current_tests, 'Pytest tests') }}>Copy</button>
+                            <button type="button" onClick={(event) => { event.preventDefault(); downloadText('test_solution.py', result.current_tests) }}>Download</button>
+                            <span className="artifact-type">TESTS</span>
+                          </span>
+                        </summary>
                         <pre><code>{result.current_tests}</code></pre>
                       </details>
                     )}
@@ -494,7 +538,7 @@ function App() {
       </div>
 
       <footer className="footer">
-        <span>HERNNESS <span className="footer-dot">/</span> VERIFICATION WORKBENCH</span>
+        <span>VETTA <span className="footer-dot">/</span> VERIFICATION WORKBENCH</span>
         <span>Generated code is untrusted. Review before use.</span>
       </footer>
     </main>

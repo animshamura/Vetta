@@ -7,17 +7,21 @@ from datetime import UTC, datetime
 from typing import Annotated
 from uuid import uuid4
 
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, status
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from prometheus_client import generate_latest
 from pydantic import BaseModel, Field, SecretStr
 
-from hernness import __version__
-from hernness.config import Settings
-from hernness.jobs import JobRecord, JobStore
-from hernness.orchestrator import run_harness
-from hernness.schemas import HarnessState
+from vetta import __version__
+from vetta.config import Settings
+from vetta.jobs import JobRecord, JobStore
+from vetta.metrics import jobs_submitted, registry
+from vetta.orchestrator import run_harness
+from vetta.postgres_store import PostgresJobStore
+from vetta.queue import create_celery_app
+from vetta.schemas import HarnessState
 
 logger = logging.getLogger(__name__)
 RunFunction = Callable[[str, int, Settings], HarnessState]
@@ -56,8 +60,11 @@ def create_app(
     runner: RunFunction = run_harness,
 ) -> FastAPI:
     resolved_settings = settings or Settings()
-    resolved_settings.ensure_database_directory()
-    store = JobStore(resolved_settings.database_path)
+    if resolved_settings.database_url:
+        store = PostgresJobStore(resolved_settings.database_url)
+    else:
+        resolved_settings.ensure_database_directory()
+        store = JobStore(resolved_settings.database_path)
     started_at = datetime.now(UTC)
 
     @asynccontextmanager
@@ -68,7 +75,7 @@ def create_app(
         yield
 
     app = FastAPI(
-        title="Hernness Verification API",
+        title="Vetta Verification API",
         version=__version__,
         description=(
             "Production-ready task submission and verification API with operational "
@@ -87,6 +94,14 @@ def create_app(
     app.state.job_store = store
     app.state.started_at = started_at
 
+    submit_attempts: dict[str, list[float]] = {}
+    queue_app = None
+    if resolved_settings.broker_url:
+        queue_app = create_celery_app(
+            resolved_settings.broker_url,
+            resolved_settings.result_backend,
+        )
+
     @app.middleware("http")
     async def request_context_middleware(request: Request, call_next):
         request_id = request.headers.get("X-Request-ID", str(uuid4()))
@@ -94,7 +109,17 @@ def create_app(
         started = time.perf_counter()
         response = await call_next(request)
         response.headers["X-Request-ID"] = request_id
-        response.headers["X-Process-Time-ms"] = str(round((time.perf_counter() - started) * 1000, 2))
+        response.headers["X-Process-Time-ms"] = str(
+            round((time.perf_counter() - started) * 1000, 2)
+        )
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+        if resolved_settings.environment.lower() == "production":
+            response.headers["Strict-Transport-Security"] = (
+                "max-age=31536000; includeSubDomains"
+            )
         return response
 
     @app.exception_handler(Exception)
@@ -182,6 +207,13 @@ def create_app(
             },
         )
 
+    @app.get("/metrics/prometheus", include_in_schema=False)
+    def prometheus_metrics() -> Response:
+        return Response(
+            content=generate_latest(registry),
+            media_type="text/plain; version=0.0.4",
+        )
+
     @app.post(
         "/v1/runs",
         response_model=JobRecord,
@@ -189,9 +221,43 @@ def create_app(
         tags=["runs"],
         dependencies=[Depends(authenticate)],
     )
-    def submit_run(payload: RunRequest, background_tasks: BackgroundTasks) -> JobRecord:
+    def submit_run(
+        payload: RunRequest,
+        background_tasks: BackgroundTasks,
+        request: Request,
+    ) -> JobRecord:
+        now = time.monotonic()
+        client_ip = request.client.host if request.client else "unknown"
+        if resolved_settings.trust_proxy:
+            forwarded = request.headers.get("X-Forwarded-For", client_ip)
+            client_ip = forwarded.split(",", 1)[0].strip()
+        recent = [
+            timestamp
+            for timestamp in submit_attempts.get(client_ip, [])
+            if now - timestamp < 60
+        ]
+        if len(recent) >= resolved_settings.requests_per_minute:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Submission rate limit exceeded. Try again later.",
+            )
+        recent.append(now)
+        submit_attempts[client_ip] = recent
         job = store.create(str(uuid4()))
-        background_tasks.add_task(process_job, job.id, payload)
+        jobs_submitted.inc()
+        if queue_app is not None:
+            queue_app.send_task(
+                "vetta.execute_run",
+                args=[
+                    job.id,
+                    payload.task_spec,
+                    payload.max_iterations or resolved_settings.max_iterations,
+                ],
+                task_id=job.id,
+                retry=True,
+            )
+        else:
+            background_tasks.add_task(process_job, job.id, payload)
         return job
 
     @app.get(
@@ -216,4 +282,4 @@ def main() -> None:
     import uvicorn
 
     Settings().validate_credentials()
-    uvicorn.run("hernness.api:app", host="0.0.0.0", port=8000)
+    uvicorn.run("vetta.api:app", host="0.0.0.0", port=8000)

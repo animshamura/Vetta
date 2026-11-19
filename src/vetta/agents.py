@@ -2,7 +2,7 @@ import time
 
 from openai import OpenAI
 
-from hernness.schemas import EvaluationVerdict, HarnessState, MakerArtifact
+from vetta.schemas import EvaluationVerdict, HarnessState, MakerArtifact
 
 
 class MakerAgent:

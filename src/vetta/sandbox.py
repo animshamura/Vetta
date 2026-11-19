@@ -28,7 +28,7 @@ class DockerSandboxExecutor:
     def execute_pytest(self, code: str, tests: str) -> tuple[bool, str]:
         container: Container | None = None
         try:
-            with tempfile.TemporaryDirectory(prefix="hernness-") as directory:
+            with tempfile.TemporaryDirectory(prefix="vetta-") as directory:
                 workdir = Path(directory)
                 os.chmod(workdir, 0o755)
                 (workdir / "solution.py").write_text(code, encoding="utf-8")

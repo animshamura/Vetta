@@ -41,3 +41,4 @@ jobs:
         env:
           OPENAI_API_KEY: test-openai-key
           HERNESS_API_TOKEN: test-api-token
+          VETTA_API_TOKEN: test-api-token

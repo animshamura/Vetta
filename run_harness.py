@@ -1,6 +1,6 @@
-"""Run the Hernness verification harness from a source checkout."""
+"""Run the Vetta verification harness from a source checkout."""
 
-from hernness.cli import main
+from vetta.cli import main
 
 if __name__ == "__main__":
     raise SystemExit(main())

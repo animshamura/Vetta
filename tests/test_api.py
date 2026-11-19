@@ -1,9 +1,9 @@
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
-from hernness.api import create_app
-from hernness.config import Settings
-from hernness.schemas import HarnessState
+from vetta.api import create_app
+from vetta.config import Settings
+from vetta.schemas import HarnessState
 
 
 def make_settings(tmp_path) -> Settings:
@@ -90,7 +90,7 @@ def test_health_endpoint_does_not_require_auth(tmp_path) -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "ok"
-    assert payload["service"] == "hernness"
+    assert payload["service"] == "vetta"
     assert payload["version"] == "1.0.0"
     assert payload["database_status"] == "ok"
 
@@ -126,3 +126,27 @@ def test_configured_frontend_origin_can_make_authenticated_requests(tmp_path) ->
 
     assert response.status_code == 200
     assert response.headers["access-control-allow-origin"] == "https://console.example.com"
+
+
+def test_security_headers_are_added(tmp_path) -> None:
+    with TestClient(create_app(make_settings(tmp_path))) as client:
+        response = client.get("/health")
+
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["x-frame-options"] == "DENY"
+    assert response.headers["referrer-policy"] == "no-referrer"
+
+
+def test_run_submission_is_rate_limited(tmp_path) -> None:
+    settings = make_settings(tmp_path)
+    settings.requests_per_minute = 2
+
+    with TestClient(create_app(settings)) as client:
+        headers = {"Authorization": "Bearer test-api-token"}
+        first = client.post("/v1/runs", headers=headers, json={"task_spec": "first"})
+        second = client.post("/v1/runs", headers=headers, json={"task_spec": "second"})
+        limited = client.post("/v1/runs", headers=headers, json={"task_spec": "third"})
+
+    assert first.status_code == 202
+    assert second.status_code == 202
+    assert limited.status_code == 429

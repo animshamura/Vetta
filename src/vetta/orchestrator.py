@@ -3,11 +3,11 @@ import time
 
 from openai import OpenAI
 
-from hernness.agents import CheckerAgent, MakerAgent
-from hernness.config import Settings
-from hernness.sandbox import DockerSandboxExecutor
-from hernness.schemas import HarnessState, SensorReport
-from hernness.sensors import DeterministicSensors
+from vetta.agents import CheckerAgent, MakerAgent
+from vetta.config import Settings
+from vetta.sandbox import DockerSandboxExecutor
+from vetta.schemas import HarnessState, SensorReport
+from vetta.sensors import DeterministicSensors
 
 logger = logging.getLogger(__name__)
 

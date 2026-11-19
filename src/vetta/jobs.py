@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from hernness.schemas import HarnessState
+from vetta.schemas import HarnessState
 
 JobStatus = Literal["queued", "running", "completed", "failed"]
 

@@ -1,4 +1,4 @@
-from hernness.sensors import DeterministicSensors
+from vetta.sensors import DeterministicSensors
 
 
 def test_syntax_error_is_reported_as_invalid() -> None:

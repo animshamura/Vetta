@@ -19,7 +19,7 @@ The project has two ways to start the same verification workflow:
   a run record, schedules the work in a FastAPI background task, and returns a run ID.
   Clients can check its status and result with `GET /v1/runs/{run_id}`. These run
   endpoints require a bearer token; `/health` is public.
-- **Command-line interface:** `hernness` or `python run_harness.py` starts a run directly
+- **Command-line interface:** `vetta` or `python run_harness.py` starts a run directly
   and prints the final state as JSON.
 
 For each run, the orchestrator performs these steps:
@@ -46,7 +46,7 @@ deterministic checks and model approval as advisory safeguards.
 ## Requirements
 
 - Python 3.11 or newer
-- Docker Engine accessible to the process running Hernness
+- Docker Engine accessible to the process running Vetta
 - An OpenAI API key
 - A prebuilt sandbox image (instructions below)
 
@@ -59,11 +59,11 @@ python -m pip install -e ".[dev]"
 Copy-Item .env.example .env
 ```
 
-Set `OPENAI_API_KEY` and a long random `HERNESS_API_TOKEN` in `.env`. Build the
+Set `OPENAI_API_KEY` and a long random `VETTA_API_TOKEN` in `.env`. Build the
 restricted test image once:
 
 ```powershell
-docker build -f docker/sandbox.Dockerfile -t hernness-sandbox:py311 .
+docker build -f docker/sandbox.Dockerfile -t vetta-sandbox:py311 .
 ```
 
 The sandbox image includes a pinned pytest version. It is not downloaded at run time.
@@ -71,13 +71,13 @@ The sandbox image includes a pinned pytest version. It is not downloaded at run 
 ## Run the API
 
 ```powershell
-hernness-api
+vetta-api
 ```
 
 Alternatively:
 
 ```powershell
-uvicorn hernness.api:app --host 127.0.0.1 --port 8000
+uvicorn vetta.api:app --host 127.0.0.1 --port 8000
 ```
 
 The API listens on port 8000. Interactive API documentation is available at
@@ -88,7 +88,7 @@ and `/metrics` exposes queue counts and runtime telemetry. Requests include an
 Submit and retrieve runs using a bearer token:
 
 ```powershell
-$headers = @{ Authorization = "Bearer $env:HERNESS_API_TOKEN" }
+$headers = @{ Authorization = "Bearer $env:VETTA_API_TOKEN" }
 $body = @{ task_spec = "Implement a thread-safe LRU cache"; max_iterations = 3 } |
     ConvertTo-Json
 $run = Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/v1/runs `
@@ -98,7 +98,7 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/v1/runs/$($run.id)" -Headers $head
 
 `POST /v1/runs` returns HTTP 202 and a job identifier. The returned job status may
 already be complete for short jobs. Job records and results are stored in SQLite at
-`HERNESS_DATABASE_PATH` (default: `data/herness.sqlite3`).
+`VETTA_DATABASE_PATH` (default: `data/vetta.sqlite3`).
 
 ## Run the CLI
 
@@ -106,8 +106,8 @@ The `run_harness.py` source-checkout entry point is also available:
 
 ```powershell
 python run_harness.py
-hernness --spec "Implement a thread-safe LRU cache"
-hernness --spec-file .\task.txt --max-iterations 3
+vetta --spec "Implement a thread-safe LRU cache"
+vetta --spec-file .\task.txt --max-iterations 3
 ```
 
 The CLI uses the same OpenAI and Docker configuration as the API and prints the final
@@ -121,7 +121,7 @@ Run the API and frontend in separate terminals:
 
 ```powershell
 # Terminal 1: from the project root, after configuring .env and Docker
-hernness-api
+vetta-api
 
 # Terminal 2
 cd frontend
@@ -130,33 +130,66 @@ npm run dev
 ```
 
 Open `http://localhost:5173`. In the console, enter the same
-`HERNESS_API_TOKEN` configured for the API, then use **Check API** or submit a run.
+`VETTA_API_TOKEN` configured for the API, then use **Check API** or submit a run.
 During local development, Vite proxies `/health` and `/v1` to `http://127.0.0.1:8000`.
 The token remains in browser memory and is not saved to local storage.
 
 To host the frontend on a different domain, set `VITE_API_BASE_URL` to the API's base
-URL when building the frontend and add the frontend origin to `HERNESS_CORS_ORIGINS` on
+URL when building the frontend and add the frontend origin to `VETTA_CORS_ORIGINS` on
 the API, for example:
 
 ```text
-HERNESS_CORS_ORIGINS=["https://your-console.example"]
+VETTA_CORS_ORIGINS=["https://your-console.example"]
 ```
 
 Only allow frontend origins you control. The bearer token is sent by the browser to the
 API; use HTTPS for any deployed frontend or API.
+
+## Demo screenshots
+
+### 1. Verification console
+
+![Vetta verification console](docs/screenshots/01-verification-console.png)
+
+The main dashboard for configuring API access, defining Python tasks, selecting retry limits,
+and inspecting verification results.
+
+### 2. Interactive API documentation
+
+![Vetta interactive API documentation](docs/screenshots/02-api-docs.png)
+
+FastAPI's interactive documentation exposes the run, health, readiness, and metrics endpoints.
+
+### 3. Health status
+
+![Vetta API health status](docs/screenshots/03-health-status.png)
+
+The public health endpoint reports service identity, uptime, environment, and database status.
+
+### 4. Operational metrics
+
+![Vetta operational metrics](docs/screenshots/04-operational-metrics.png)
+
+The metrics endpoint provides queue totals and counts for each run state.
+
+### 5. Mobile-responsive console
+
+![Vetta mobile console](docs/screenshots/05-mobile-console.png)
+
+The React verification console adapts to smaller screens and remains usable on mobile devices.
 
 ## Configuration
 
 | Variable | Required | Default | Description |
 | --- | --- | --- | --- |
 | `OPENAI_API_KEY` | Yes | — | OpenAI API credential |
-| `HERNESS_API_TOKEN` | Yes for API | — | Bearer token protecting run endpoints |
-| `HERNESS_DATABASE_PATH` | No | `data/herness.sqlite3` | SQLite job database |
-| `HERNESS_MAKER_MODEL` | No | `gpt-4o` | Code-generation model |
-| `HERNESS_CHECKER_MODEL` | No | `o3-mini` | Review model |
-| `HERNESS_SANDBOX_IMAGE` | No | `hernness-sandbox:py311` | Locally available sandbox image |
-| `HERNESS_SANDBOX_TIMEOUT_SECONDS` | No | `30` | Per-test-run timeout (1–300 seconds) |
-| `HERNESS_MAX_ITERATIONS` | No | `4` | Default maximum iterations (1–10) |
+| `VETTA_API_TOKEN` | Yes for API | — | Bearer token protecting run endpoints |
+| `VETTA_DATABASE_PATH` | No | `data/vetta.sqlite3` | SQLite job database |
+| `VETTA_MAKER_MODEL` | No | `gpt-4o` | Code-generation model |
+| `VETTA_CHECKER_MODEL` | No | `o3-mini` | Review model |
+| `VETTA_SANDBOX_IMAGE` | No | `vetta-sandbox:py311` | Locally available sandbox image |
+| `VETTA_SANDBOX_TIMEOUT_SECONDS` | No | `30` | Per-test-run timeout (1–300 seconds) |
+| `VETTA_MAX_ITERATIONS` | No | `4` | Default maximum iterations (1–10) |
 
 ## Sandbox controls
 
@@ -175,6 +208,25 @@ The service is ready for more production-oriented deployments thanks to:
 - dependency-aware startup validation for OpenAI credentials, API token, and SQLite readiness
 - safe internal error handling that avoids leaking sensitive implementation details
 - deterministic CORS configuration for approved frontend origins
+
+## Enterprise deployment
+
+The production profile uses PostgreSQL, Redis/Celery, separate API and worker processes,
+Prometheus metrics, and isolated Docker sandbox workers.
+
+```bash
+export POSTGRES_PASSWORD="$(openssl rand -hex 32)"
+export REDIS_PASSWORD="$(openssl rand -hex 32)"
+export VETTA_API_TOKEN="$(openssl rand -hex 32)"
+export OPENAI_API_KEY="replace-with-a-secret-manager-reference"
+export VETTA_CORS_ORIGINS='["https://vetta.example.com"]'
+docker compose -f docker-compose.enterprise.yml up -d --build
+```
+
+Keep credentials in a secret manager rather than source-controlled environment files or images.
+API containers should not mount Docker; worker containers may use Docker only on dedicated,
+isolated hosts. Operational endpoints are `/health`, `/ready`, `/metrics`, and
+`/metrics/prometheus`. Start workers with `vetta-worker` and API instances with `vetta-api`.
 
 ## Development
 

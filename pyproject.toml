@@ -3,16 +3,21 @@ requires = ["setuptools>=69"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "hernness"
+name = "vetta"
 version = "1.0.0"
 description = "An API and CLI for an adversarial AI code-verification harness."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "celery[redis]>=5.5,<6",
     "docker>=7.1,<8",
     "fastapi>=0.115,<1",
     "openai>=1.68,<3",
+    "prometheus-client>=0.21,<1",
+    "psycopg[binary]>=3.2,<4",
     "pydantic-settings>=2.7,<3",
+    "sqlalchemy>=2.0,<3",
+    "structlog>=25,<26",
     "uvicorn>=0.34,<1",
 ]
 
@@ -24,8 +29,9 @@ dev = [
 ]
 
 [project.scripts]
-hernness = "hernness.cli:main"
-hernness-api = "hernness.api:main"
+vetta = "vetta.cli:main"
+vetta-api = "vetta.api:main"
+vetta-worker = "vetta.worker:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
