@@ -33,9 +33,23 @@ body {
   min-width: 360px;
   min-height: 100vh;
   margin: 0;
+  overflow-x: hidden;
   background:
-    radial-gradient(ellipse at 48% -15%, rgb(91 118 63 / 11%), transparent 48%),
+    radial-gradient(circle at 78% 8%, rgba(193, 241, 122, 0.09), transparent 22rem),
+    radial-gradient(circle at 12% 38%, rgba(113, 145, 255, 0.055), transparent 26rem),
+    linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px),
     var(--page);
+  background-size: auto, auto, 44px 44px, 44px 44px, auto;
+}
+
+body::before {
+  position: fixed;
+  z-index: -1;
+  inset: 0;
+  background: radial-gradient(circle at 50% 0%, rgba(193, 241, 122, 0.035), transparent 32%);
+  content: '';
+  pointer-events: none;
 }
 
 button, input, textarea { font: inherit; }

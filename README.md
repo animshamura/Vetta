@@ -1,182 +1,155 @@
 # Vetta
 
-Vetta is an API and CLI for an AI-assisted Python code-generation and verification
-workflow. Given a task specification, it asks a maker model to produce Python code and
-pytest tests, applies deterministic source checks, runs the tests in a restricted Docker
-container, and asks a separate checker model to review successful results. The cycle can
-repeat with test failures or reviewer feedback until the artifact is approved or the
-iteration limit is reached.
+<div align="center">
 
-> The AST checks are not a security boundary. Do not execute untrusted code on a host
-> containing sensitive data. Docker isolation is defense in depth, not a substitute for
-> a dedicated hardened worker platform.
+**AI-assisted Python code generation, verification, sandbox testing, and independent review**
 
-## What the system does
+[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](https://react.dev/)
+[![Docker](https://img.shields.io/badge/Docker-Sandbox-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
 
-The project has two ways to start the same verification workflow:
+</div>
 
-- **HTTP API:** A client submits a task specification to `POST /v1/runs`. The API creates
-  a run record, schedules the work in a FastAPI background task, and returns a run ID.
-  Clients can check its status and result with `GET /v1/runs/{run_id}`. These run
-  endpoints require a bearer token; `/health` is public.
-- **Command-line interface:** `vetta` or `python run_harness.py` starts a run directly
-  and prints the final state as JSON.
+Vetta is a full-stack verification harness that converts natural-language specifications into
+Python implementations, generates pytest tests, rejects unsafe source patterns, executes the
+solution in an isolated Docker container, and submits successful artifacts to an independent
+model for final review. It supports authenticated REST API access, a command-line interface,
+and a responsive React workbench.
 
-For each run, the orchestrator performs these steps:
+> Generated code is untrusted. Vetta provides advisory safeguards and isolated test execution,
+> but AST checks and Docker isolation are not substitutes for formal verification or a hardened
+> production worker platform.
 
-1. **Generate:** The maker model receives the specification and returns a code artifact,
-   tests, and its reasoning.
-2. **Screen:** A deterministic Python AST check rejects syntax errors and selected
-   forbidden imports or built-ins in the generated source.
-3. **Test:** If the source passes screening, pytest runs against it in a Docker
-   sandbox with networking disabled, resource limits, a timeout, a read-only filesystem,
-   and a non-root user.
-4. **Review:** Only after tests pass, the checker model reviews the specification, code,
-   tests, and test output. It either approves the result or returns critiques.
-5. **Retry and report:** When screening, testing, or review fails, the maker can try
-   again with the preceding failure or critiques, up to the configured iteration limit.
-   The final run state includes the code, tests, sensor report, checker verdict,
-   iteration history, and model usage metrics.
+## Project Overview
 
-The API persists queued, running, completed, or failed run records and results in SQLite.
-This is a code-generation and verification pipeline—not a guarantee that generated code
-is secure or production-ready. Review its output before using it, and treat both
-deterministic checks and model approval as advisory safeguards.
+| Area | Implementation |
+| --- | --- |
+| AI generation | Separate maker and checker model calls |
+| Source screening | Python AST validation and forbidden-pattern detection |
+| Test execution | Restricted Docker container with pytest |
+| Backend | FastAPI, bearer authentication, SQLite or PostgreSQL |
+| Queue | FastAPI local tasks or Redis/Celery production workers |
+| Frontend | React 19, TypeScript, Vite, responsive console |
+| Operations | Health, readiness, JSON and Prometheus metrics |
 
-## Requirements
+## Verification Lifecycle
+
+```mermaid
+flowchart LR
+    A[Task Specification] --> B[Maker Model]
+    B --> C[Code + Tests]
+    C --> D[AST and Source Screening]
+    D -->|Pass| E[Docker Pytest Sandbox]
+    D -->|Fail| F[Maker Retry]
+    E -->|Pass| G[Checker Model]
+    E -->|Fail| F
+    G -->|Approved| H[Verified Result]
+    G -->|Critiques| F
+    F --> B
+```
+
+## Core Features
+
+- **Adversarial verification:** Separates code generation from independent review.
+- **Deterministic screening:** Rejects syntax errors, selected imports, built-ins, and source patterns.
+- **Secure test isolation:** Uses disabled networking, read-only storage, resource limits, process limits,
+  dropped capabilities, `no-new-privileges`, and a non-root container user.
+- **Iteration management:** Retains history, sensor reports, reviewer critiques, token metrics, and duration.
+- **API and CLI access:** Supports `/v1/runs`, bearer authentication, polling, and direct CLI execution.
+- **Modern console:** Displays job state, diagnostics, critiques, source artifacts, test logs, and metrics.
+- **Production profile:** Supports PostgreSQL, Redis/Celery, separate workers, and Prometheus telemetry.
+
+## Quick Start
+
+### Requirements
 
 - Python 3.11 or newer
-- Docker Engine accessible to the process running Vetta
-- An OpenAI API key
-- A prebuilt sandbox image (instructions below)
+- Node.js and npm
+- Docker Engine
+- OpenAI API key
+- Prebuilt `vetta-sandbox:py311` image
 
-## Local setup
+### Backend
 
-```powershell
-py -m venv .venv
-.\.venv\Scripts\Activate.ps1
+```bash
+python -m venv .venv
+source .venv/bin/activate
 python -m pip install -e ".[dev]"
-Copy-Item .env.example .env
-```
+cp .env.example .env
 
-Set `OPENAI_API_KEY` and a long random `VETTA_API_TOKEN` in `.env`. Build the
-restricted test image once:
-
-```powershell
 docker build -f docker/sandbox.Dockerfile -t vetta-sandbox:py311 .
-```
-
-The sandbox image includes a pinned pytest version. It is not downloaded at run time.
-
-## Run the API
-
-```powershell
 vetta-api
 ```
 
-Alternatively:
+Set `OPENAI_API_KEY` and `VETTA_API_TOKEN` in `.env` before starting the API.
+The API runs at `http://127.0.0.1:8000`; interactive documentation is at `/docs`.
 
-```powershell
-uvicorn vetta.api:app --host 127.0.0.1 --port 8000
-```
+### Frontend
 
-The API listens on port 8000. Interactive API documentation is available at
-`/docs`; `/health`, `/ready`, and `/metrics` are unauthenticated operational endpoints.
-`/health` reports service identity and uptime, `/ready` validates critical dependencies,
-and `/metrics` exposes queue counts and runtime telemetry. Requests include an
-`X-Request-ID` header for traceability and standardized processing telemetry.
-Submit and retrieve runs using a bearer token:
-
-```powershell
-$headers = @{ Authorization = "Bearer $env:VETTA_API_TOKEN" }
-$body = @{ task_spec = "Implement a thread-safe LRU cache"; max_iterations = 3 } |
-    ConvertTo-Json
-$run = Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/v1/runs `
-    -Headers $headers -ContentType "application/json" -Body $body
-Invoke-RestMethod -Uri "http://127.0.0.1:8000/v1/runs/$($run.id)" -Headers $headers
-```
-
-`POST /v1/runs` returns HTTP 202 and a job identifier. The returned job status may
-already be complete for short jobs. Job records and results are stored in SQLite at
-`VETTA_DATABASE_PATH` (default: `data/vetta.sqlite3`).
-
-## Run the CLI
-
-The `run_harness.py` source-checkout entry point is also available:
-
-```powershell
-python run_harness.py
-vetta --spec "Implement a thread-safe LRU cache"
-vetta --spec-file .\task.txt --max-iterations 3
-```
-
-The CLI uses the same OpenAI and Docker configuration as the API and prints the final
-run state as JSON.
-
-## React test console
-
-The React interface in `frontend/` lets you connect to the API, submit a task, follow
-its status, and inspect generated code, tests, checker feedback, and sandbox output.
-Run the API and frontend in separate terminals:
-
-```powershell
-# Terminal 1: from the project root, after configuring .env and Docker
-vetta-api
-
-# Terminal 2
+```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-Open `http://localhost:5173`. In the console, enter the same
-`VETTA_API_TOKEN` configured for the API, then use **Check API** or submit a run.
-During local development, Vite proxies `/health` and `/v1` to `http://127.0.0.1:8000`.
-The token remains in browser memory and is not saved to local storage.
+Open `http://localhost:5173`, enter the Vetta bearer token, and use **Check API**.
 
-To host the frontend on a different domain, set `VITE_API_BASE_URL` to the API's base
-URL when building the frontend and add the frontend origin to `VETTA_CORS_ORIGINS` on
-the API, for example:
+### Command Line
 
-```text
-VETTA_CORS_ORIGINS=["https://your-console.example"]
+```bash
+python run_harness.py
+vetta --spec "Implement a thread-safe LRU cache"
+vetta --spec-file task.txt --max-iterations 3
 ```
 
-Only allow frontend origins you control. The bearer token is sent by the browser to the
-API; use HTTPS for any deployed frontend or API.
+## API Usage
 
-## Demo screenshots
+```bash
+curl -X POST http://127.0.0.1:8000/v1/runs \
+  -H "Authorization: Bearer $VETTA_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"task_spec":"Implement a thread-safe LRU cache","max_iterations":3}'
+```
 
-### 1. Verification console
+Retrieve a run with `GET /v1/runs/JOB_ID` using the same bearer token.
 
-![Vetta verification console](docs/screenshots/01-verification-console.png)
+## Demo Screenshots
 
-The main dashboard for configuring API access, defining Python tasks, selecting retry limits,
-and inspecting verification results.
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <img src="docs/screenshots/01-verification-console.png" alt="Vetta verification console" width="100%">
+      <b>Verification Console</b>
+    </td>
+    <td width="50%" align="center">
+      <img src="docs/screenshots/02-api-docs.png" alt="Vetta API documentation" width="100%">
+      <b>Interactive API Documentation</b>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <img src="docs/screenshots/03-health-status.png" alt="Vetta health status" width="100%">
+      <b>Health Status</b>
+    </td>
+    <td width="50%" align="center">
+      <img src="docs/screenshots/04-operational-metrics.png" alt="Vetta operational metrics" width="100%">
+      <b>Operational Metrics</b>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center">
+      <img src="docs/screenshots/05-mobile-console.png" alt="Vetta mobile console" width="38%">
+      <br><b>Mobile-Responsive Console</b>
+    </td>
+  </tr>
+</table>
 
-### 2. Interactive API documentation
-
-![Vetta interactive API documentation](docs/screenshots/02-api-docs.png)
-
-FastAPI's interactive documentation exposes the run, health, readiness, and metrics endpoints.
-
-### 3. Health status
-
-![Vetta API health status](docs/screenshots/03-health-status.png)
-
-The public health endpoint reports service identity, uptime, environment, and database status.
-
-### 4. Operational metrics
-
-![Vetta operational metrics](docs/screenshots/04-operational-metrics.png)
-
-The metrics endpoint provides queue totals and counts for each run state.
-
-### 5. Mobile-responsive console
-
-![Vetta mobile console](docs/screenshots/05-mobile-console.png)
-
-The React verification console adapts to smaller screens and remains usable on mobile devices.
+<div align="justify">
+The console provides task configuration, API connectivity, retry controls, live run status,
+generated source and tests, sandbox output, reviewer critiques, and execution metrics. The
+interface remains usable across desktop and mobile viewport sizes.
+</div>
 
 ## Configuration
 
