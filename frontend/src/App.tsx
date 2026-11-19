@@ -331,12 +331,13 @@ function App() {
             <button
               className="button button-primary submit-button"
               type="submit"
-              disabled={isSubmitting || !token.trim() || !spec.trim()}
+              disabled={isSubmitting || connection !== 'online' || !token.trim() || !spec.trim()}
             >
               <span>{isSubmitting ? 'Submitting run…' : 'Start verification run'}</span>
               {!isSubmitting && <span className="button-arrow" aria-hidden="true">↗</span>}
             </button>
             {!token.trim() && <p className="form-note">Enter your bearer token to enable a run.</p>}
+            {token.trim() && connection !== 'online' && <p className="form-note">Check the API connection before starting a run.</p>}
           </form>
         </section>
 
