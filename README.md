@@ -1,6 +1,6 @@
-# Hernness
+# Vetta
 
-Hernness is an API and CLI for an AI-assisted Python code-generation and verification
+Vetta is an API and CLI for an AI-assisted Python code-generation and verification
 workflow. Given a task specification, it asks a maker model to produce Python code and
 pytest tests, applies deterministic source checks, runs the tests in a restricted Docker
 container, and asks a separate checker model to review successful results. The cycle can
